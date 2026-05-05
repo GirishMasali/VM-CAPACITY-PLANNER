@@ -1,1074 +1,917 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>VM Capacity Planning Tool</title>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<style>
-:root{
-  --bg:#080c14;--surface:#0d1320;--surface2:#111827;--border:#1e2d45;--border2:#2a3f5f;
-  --blue:#4facfe;--green:#43e97b;--amber:#f6a821;--red:#ff4d6d;--purple:#a78bfa;
-  --text:#e2f0ff;--text2:#7a99c0;--text3:#3d5a7a;
-  --cpu:#4facfe;--mem:#43e97b;--cpu-trend:#f6a821;--mem-trend:#a78bfa;
-}
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;
-  background-image:radial-gradient(ellipse at 20% 20%,rgba(79,172,254,.04) 0%,transparent 50%),
-  radial-gradient(ellipse at 80% 80%,rgba(67,233,123,.03) 0%,transparent 50%)}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VM Capacity Planner - Autoscaling Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --bg: #0a0e27;
+            --surface: #111b3d;
+            --surface-alt: #1a2847;
+            --border: #2a3f5f;
+            --border-light: #3d5a7a;
+            --blue: #4facfe;
+            --green: #43e97b;
+            --amber: #f6a821;
+            --red: #ff4d6d;
+            --purple: #a78bfa;
+            --cyan: #06b6d4;
+            --text: #e2f0ff;
+            --text-secondary: #7a99c0;
+            --text-muted: #3d5a7a;
+        }
 
-/* ── topbar ── */
-.topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 28px;
-  background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
-.topbar-brand{display:flex;align-items:center;gap:10px;font-family:'JetBrains Mono',monospace;
-  font-size:14px;font-weight:700;letter-spacing:.5px}
-.brand-icon{width:26px;height:26px;border-radius:6px;background:linear-gradient(135deg,var(--blue),var(--green));
-  display:flex;align-items:center;justify-content:center;font-size:13px}
-.topbar-right{display:flex;align-items:center;gap:16px}
-.update-time{font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace}
-.status-dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
-.status-dot.err{background:var(--red);box-shadow:0 0 8px var(--red)}
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
 
-/* ── nav ── */
-.nav{display:flex;background:var(--surface);border-bottom:1px solid var(--border);padding:0 28px;gap:4px}
-.nav-btn{padding:10px 18px;font-size:13px;font-weight:500;color:var(--text2);
-  background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;
-  transition:all .2s;letter-spacing:.2px}
-.nav-btn.active{color:var(--blue);border-bottom-color:var(--blue)}
-.nav-btn:hover:not(.active){color:var(--text)}
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, var(--bg) 0%, #0f1729 50%, #1a0a2e 100%);
+            color: var(--text);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
 
-/* ── banners ── */
-.banner{display:flex;align-items:center;gap:10px;padding:9px 24px;font-size:12.5px;
-  font-weight:500;border-bottom:1px solid;animation:slideDown .3s ease}
-@keyframes slideDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
-.banner.alert{background:rgba(255,77,109,.12);color:#ffb3c0;border-color:rgba(255,77,109,.3)}
-.banner.predict{background:rgba(246,168,33,.1);color:#ffd580;border-color:rgba(246,168,33,.25)}
-.banner button{margin-left:auto;background:none;border:none;color:inherit;font-size:16px;cursor:pointer;opacity:.7}
-.banner button:hover{opacity:1}
-.hidden{display:none!important}
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 24px;
+            background: linear-gradient(90deg, rgba(17, 27, 61, 0.9) 0%, rgba(26, 40, 71, 0.9) 100%);
+            border-bottom: 2px solid var(--border);
+            backdrop-filter: blur(10px);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        }
 
-/* ── debug bar ── */
-.debug-bar{font-size:10.5px;color:var(--text3);padding:4px 28px;background:#050810;
-  border-bottom:1px solid var(--border);font-family:'JetBrains Mono',monospace}
-.debug-bar.warn{color:var(--amber)}
+        .topbar-brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 18px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--blue), var(--cyan), var(--green));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: 1px;
+        }
 
-/* ── tab panels ── */
-.tab-panel{display:none}.tab-panel.active{display:block}
+        .brand-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: linear-gradient(135deg, var(--blue), var(--green));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            box-shadow: 0 0 16px rgba(79, 172, 254, 0.4);
+        }
 
-/* ── dashboard layout ── */
-.dash{padding:20px 28px;display:flex;flex-direction:column;gap:20px;max-width:1600px}
+        .topbar-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
 
-/* ── config bar ── */
-.config-bar{display:flex;align-items:center;gap:24px;background:var(--surface);
-  border:1px solid var(--border);border-radius:10px;padding:11px 18px;font-size:13px;flex-wrap:wrap}
-.config-bar strong{color:var(--text);font-weight:600}
-.config-bar label{display:flex;align-items:center;gap:8px;color:var(--text2)}
-.config-bar input[type=range]{width:100px;accent-color:var(--blue)}
-.cfg-val{color:var(--text);font-weight:600;min-width:38px;font-family:'JetBrains Mono',monospace}
-.config-sep{color:var(--text3)}
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            background: rgba(67, 233, 123, 0.1);
+            border: 1px solid rgba(67, 233, 123, 0.3);
+            border-radius: 6px;
+            font-size: 12px;
+        }
 
-/* ── section labels ── */
-.sec-label{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text3);
-  font-weight:600;display:flex;align-items:center;gap:8px}
-.sec-label::after{content:'';flex:1;height:1px;background:var(--border)}
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--green);
+            box-shadow: 0 0 8px var(--green);
+            animation: pulse 2s ease-in-out infinite;
+        }
 
-/* ── stat cards ── */
-.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
-.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;
-  padding:16px 18px;transition:all .3s}
-.stat-card.warn{border-color:rgba(246,168,33,.5);background:rgba(246,168,33,.05)}
-.stat-card.crit{border-color:rgba(255,77,109,.5);background:rgba(255,77,109,.05)}
-.stat-card-label{font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--text2);margin-bottom:10px}
-.stat-card-value{font-size:30px;font-weight:700;font-family:'JetBrains Mono',monospace;
-  color:var(--blue);line-height:1}
-.stat-card.warn .stat-card-value{color:var(--amber)}
-.stat-card.crit .stat-card-value{color:var(--red)}
-.stat-card-sub{font-size:11px;color:var(--text3);margin-top:5px}
+        .status-dot.warning {
+            background: var(--amber);
+            box-shadow: 0 0 8px var(--amber);
+        }
 
-/* ── trend cards ── */
-.trend-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
-.trend-card{border-radius:12px;padding:16px 18px;border:1px solid;transition:all .3s;position:relative;overflow:hidden}
-.trend-card::before{content:'';position:absolute;inset:0;opacity:.05;pointer-events:none}
-.trend-card.stable{background:rgba(67,233,123,.06);border-color:rgba(67,233,123,.3)}
-.trend-card.stable::before{background:var(--green)}
-.trend-card.rising{background:rgba(246,168,33,.06);border-color:rgba(246,168,33,.35)}
-.trend-card.rising::before{background:var(--amber)}
-.trend-card.critical{background:rgba(255,77,109,.07);border-color:rgba(255,77,109,.4)}
-.trend-card.critical::before{background:var(--red)}
-.trend-card.nodata{background:var(--surface);border-color:var(--border)}
-.trend-label{font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--text2);margin-bottom:10px}
-.trend-value{font-size:22px;font-weight:700;font-family:'JetBrains Mono',monospace;line-height:1}
-.trend-card.stable  .trend-value{color:var(--green)}
-.trend-card.rising  .trend-value{color:var(--amber)}
-.trend-card.critical .trend-value{color:var(--red)}
-.trend-card.nodata  .trend-value{color:var(--text3);font-size:13px;margin-top:6px;line-height:1.6;font-family:'DM Sans',sans-serif}
-.trend-sub{font-size:11px;color:var(--text2);margin-top:5px}
+        .status-dot.critical {
+            background: var(--red);
+            box-shadow: 0 0 12px var(--red);
+            animation: pulse-critical 1s ease-in-out infinite;
+        }
 
-/* ── breach cards ── */
-.breach-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.breach-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px}
-.breach-card-title{font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--text2);margin-bottom:14px;
-  display:flex;align-items:center;gap:6px}
-.breach-body{display:flex;gap:16px;align-items:flex-start}
-.breach-icon{font-size:28px;line-height:1;flex-shrink:0}
-.breach-info{flex:1}
-.breach-status{font-size:18px;font-weight:700;font-family:'JetBrains Mono',monospace;margin-bottom:4px}
-.breach-status.ok{color:var(--green)}
-.breach-status.warn{color:var(--amber)}
-.breach-status.crit{color:var(--red)}
-.breach-status.nodata{color:var(--text3);font-size:14px;font-family:'DM Sans',sans-serif}
-.breach-note{font-size:12px;color:var(--text2);margin-bottom:8px}
-/* projected value pills */
-.breach-projections{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
-.proj-pill{font-size:11px;font-family:'JetBrains Mono',monospace;padding:3px 8px;
-  border-radius:4px;background:var(--surface2);border:1px solid var(--border);color:var(--text2)}
-.proj-pill.over{background:rgba(255,77,109,.1);border-color:rgba(255,77,109,.3);color:#ffb3c0}
-.proj-pill label{font-size:9px;color:var(--text3);margin-right:3px}
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
 
-/* ── capacity panel ── */
-.capacity-panel{background:var(--surface);border-radius:12px;border:1px solid var(--border);overflow:hidden}
-.capacity-header{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
-.capacity-header h2{font-size:13px;font-weight:600;color:var(--text)}
-.urgency-badge{font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;
-  font-family:'JetBrains Mono',monospace;letter-spacing:.5px}
-.urgency-badge.ok{background:rgba(67,233,123,.15);color:var(--green);border:1px solid rgba(67,233,123,.3)}
-.urgency-badge.monitor{background:rgba(79,172,254,.15);color:var(--blue);border:1px solid rgba(79,172,254,.3)}
-.urgency-badge.warn{background:rgba(246,168,33,.15);color:var(--amber);border:1px solid rgba(246,168,33,.3)}
-.urgency-badge.critical{background:rgba(255,77,109,.15);color:var(--red);border:1px solid rgba(255,77,109,.3)}
-.capacity-body{padding:16px 20px;display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.capacity-actions{display:flex;flex-direction:column;gap:8px}
+        @keyframes pulse-critical {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
 
-.cap-action{display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-radius:8px;border:1px solid}
-.cap-action.ok{background:rgba(67,233,123,.05);border-color:rgba(67,233,123,.2)}
-.cap-action.monitor{background:rgba(79,172,254,.05);border-color:rgba(79,172,254,.2)}
-.cap-action.warn{background:rgba(246,168,33,.07);border-color:rgba(246,168,33,.25)}
-.cap-action.critical{background:rgba(255,77,109,.07);border-color:rgba(255,77,109,.3)}
-.cap-action-icon{font-size:16px;flex-shrink:0;margin-top:1px}
-.cap-action-body .cap-action-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px}
-.cap-action-body .cap-action-reason{font-size:11px;color:var(--text2)}
-.headroom-section{display:flex;flex-direction:column;gap:8px}
-.headroom-title{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-bottom:4px}
-.headroom-bar-wrap{margin-bottom:6px}
-.headroom-bar-label{display:flex;justify-content:space-between;font-size:11px;color:var(--text2);margin-bottom:4px}
-.headroom-bar{height:8px;background:var(--surface2);border-radius:4px;overflow:hidden;border:1px solid var(--border)}
-.headroom-bar-fill{height:100%;border-radius:4px;transition:width .5s ease}
-.headroom-bar-fill.cpu{background:linear-gradient(90deg,var(--cpu),rgba(79,172,254,.6))}
-.headroom-bar-fill.mem{background:linear-gradient(90deg,var(--mem),rgba(67,233,123,.6))}
-.headroom-bar-fill.over{background:linear-gradient(90deg,var(--red),rgba(255,77,109,.6))}
-.headroom-spec{display:flex;gap:8px;font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace}
-.spec-tag{background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 7px}
+        .tab-nav {
+            display: flex;
+            gap: 8px;
+            padding: 16px 24px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            overflow-x: auto;
+        }
 
-/* ── forecast horizon section ── */
-.forecast-section{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px}
-.forecast-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
-.fc-step{flex:1;min-width:70px;background:var(--surface2);border:1px solid var(--border);
-  border-radius:8px;padding:8px 10px;text-align:center}
-.fc-step.over-thresh{border-color:rgba(255,77,109,.4);background:rgba(255,77,109,.06)}
-.fc-step-label{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
-.fc-step-val{font-size:13px;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--text)}
-.fc-step.over-thresh .fc-step-val{color:var(--red)}
-.forecast-tabs{display:flex;gap:8px;margin-bottom:12px}
-.fc-tab{font-size:12px;padding:4px 12px;border-radius:6px;cursor:pointer;border:1px solid var(--border);
-  background:none;color:var(--text2);transition:all .15s}
-.fc-tab.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+        .tab-btn {
+            padding: 10px 18px;
+            background: transparent;
+            border: 2px solid transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+            position: relative;
+        }
 
-/* ── charts ── */
-.chart-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 22px}
-.chart-hdr{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px}
-.chart-hdr h2{font-size:13px;font-weight:600;color:var(--text)}
-.chart-sub{font-size:11px;color:var(--text3);margin-top:3px}
-.legend{display:flex;align-items:center;gap:10px;font-size:11px;color:var(--text2);flex-wrap:wrap}
-.ldot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:3px}
-canvas{max-height:250px}
-.scatter-note{font-size:11px;color:var(--text3);margin-top:8px;padding:6px 12px;
-  background:#050810;border-radius:6px;border-left:2px solid var(--border)}
-.scatter-note.high{border-left-color:var(--red);color:#ff8fab}
+        .tab-btn:hover {
+            color: var(--text);
+            border-color: var(--border-light);
+        }
 
-/* ── REPORT ── */
-.report-wrap{padding:20px 28px;max-width:960px}
-.report-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden}
-.report-hdr{padding:22px 28px;border-bottom:1px solid var(--border);
-  background:linear-gradient(135deg,rgba(79,172,254,.06),rgba(67,233,123,.04))}
-.report-hdr h2{font-size:20px;font-weight:700;color:var(--text);margin-bottom:4px}
-.report-hdr p{font-size:12px;color:var(--text2)}
-.report-body{padding:24px 28px;display:flex;flex-direction:column;gap:24px}
-.rsec h3{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--blue);
-  font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:8px}
-.rsec h3::after{content:'';flex:1;height:1px;background:var(--border)}
-.rgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
-.rm{background:var(--surface2);border-radius:8px;padding:12px 14px;border:1px solid var(--border)}
-.rm .rl{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
-.rm .rv{font-size:16px;font-weight:700;color:var(--text);font-family:'JetBrains Mono',monospace}
-.rm .rv.good{color:var(--green)}.rm .rv.warn{color:var(--amber)}.rm .rv.bad{color:var(--red)}
-.rtable{width:100%;border-collapse:collapse;font-size:13px}
-.rtable th{text-align:left;font-size:10px;color:var(--text3);padding:7px 10px;
-  border-bottom:1px solid var(--border);text-transform:uppercase;letter-spacing:.5px}
-.rtable td{padding:9px 10px;color:var(--text);border-bottom:1px solid var(--border)}
-.rtable tr:last-child td{border-bottom:none}
-.fc-horizon{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
-.fc-pip{padding:3px 8px;border-radius:4px;font-size:11px;font-family:'JetBrains Mono',monospace;
-  background:var(--surface2);border:1px solid var(--border);color:var(--text2)}
-.fc-pip.over{background:rgba(255,77,109,.1);border-color:rgba(255,77,109,.3);color:#ffb3c0}
-.rec-box{border-radius:10px;padding:16px 18px;border-left:4px solid;margin-top:4px}
-.rec-box.ok{background:rgba(67,233,123,.06);border-color:var(--green)}
-.rec-box.monitor{background:rgba(79,172,254,.06);border-color:var(--blue)}
-.rec-box.warn{background:rgba(246,168,33,.07);border-color:var(--amber)}
-.rec-box.critical{background:rgba(255,77,109,.07);border-color:var(--red)}
-.rec-label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
-.rec-text{font-size:14px;font-weight:600;color:var(--text)}
-.cap-actions-report{display:flex;flex-direction:column;gap:8px;margin-top:12px}
-.rpt-btns{display:flex;gap:10px;padding-top:8px}
-.rpt-btn{padding:9px 20px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .2s}
-.rpt-btn.blue{background:rgba(79,172,254,.2);color:var(--blue);border:1px solid rgba(79,172,254,.3)}
-.rpt-btn.blue:hover{background:rgba(79,172,254,.3)}
-.rpt-btn.green{background:rgba(67,233,123,.15);color:var(--green);border:1px solid rgba(67,233,123,.25)}
-.rpt-btn.green:hover{background:rgba(67,233,123,.25)}
-#report-loading{padding:60px;text-align:center;color:var(--text3);font-size:14px}
+        .tab-btn.active {
+            color: var(--text);
+            border-color: var(--blue);
+            background: rgba(79, 172, 254, 0.1);
+            box-shadow: 0 0 16px rgba(79, 172, 254, 0.2);
+        }
 
-/* ── modal ── */
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;
-  align-items:center;justify-content:center;z-index:200;backdrop-filter:blur(4px)}
-.modal{background:var(--surface2);border:1px solid rgba(255,77,109,.4);border-radius:16px;
-  padding:30px 34px;max-width:500px;width:92%;text-align:center;
-  box-shadow:0 0 60px rgba(255,77,109,.15)}
-.modal-icon{font-size:44px;margin-bottom:12px}
-.modal h2{font-size:19px;color:var(--red);margin-bottom:8px}
-.modal p{color:var(--text2);font-size:13px;line-height:1.6;margin-bottom:14px}
-.modal-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
-.msi{background:var(--bg);border-radius:8px;padding:10px 12px;text-align:left;border:1px solid var(--border)}
-.msi .ml{font-size:10px;color:var(--text3);text-transform:uppercase;margin-bottom:3px}
-.msi .mv{font-size:16px;font-weight:700;color:var(--red);font-family:'JetBrains Mono',monospace}
-.modal-fc{background:rgba(246,168,33,.07);border:1px solid rgba(246,168,33,.2);
-  border-radius:8px;padding:10px 14px;margin-bottom:14px;text-align:left}
-.modal-fc-title{font-size:10px;color:var(--amber);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
-.modal-fc-row{display:flex;gap:12px}
-.modal-fc-col .mfl{font-size:10px;color:var(--text3)}
-.modal-fc-col .mfv{font-size:13px;font-weight:600;color:var(--amber);font-family:'JetBrains Mono',monospace}
-.modal-reason{font-size:12px;background:rgba(255,77,109,.08);border-radius:6px;
-  padding:8px 10px;color:#ff8fab;margin-bottom:14px;text-align:left}
-.modal-btn{background:var(--red);color:#fff;border:none;padding:10px 30px;
-  border-radius:8px;font-size:14px;font-weight:600;cursor:pointer}
+        .tab-btn.alert {
+            border-color: var(--red);
+            color: var(--red);
+            animation: tab-alert 2s ease-in-out infinite;
+        }
 
-@media(max-width:900px){
-  .stat-grid,.trend-grid{grid-template-columns:repeat(2,1fr)}
-  .breach-grid,.capacity-body{grid-template-columns:1fr}
-  .rgrid{grid-template-columns:1fr 1fr}
-  .dash,.report-wrap{padding:12px}
-}
-</style>
+        @keyframes tab-alert {
+            0%, 100% { box-shadow: 0 0 8px rgba(255, 77, 109, 0.3); }
+            50% { box-shadow: 0 0 16px rgba(255, 77, 109, 0.5); }
+        }
+
+        .tab-panel {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .tab-panel.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .container {
+            padding: 24px;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+
+        .alert-banner {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 18px;
+            margin-bottom: 16px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 500;
+            background: linear-gradient(90deg, rgba(255, 77, 109, 0.15), rgba(246, 168, 33, 0.1));
+            border: 1px solid rgba(255, 77, 109, 0.4);
+            animation: slideDown 0.4s ease;
+        }
+
+        .alert-banner.hidden {
+            display: none;
+        }
+
+        .alert-banner.warning {
+            background: linear-gradient(90deg, rgba(246, 168, 33, 0.15), rgba(79, 172, 254, 0.1));
+            border-color: rgba(246, 168, 33, 0.4);
+        }
+
+        .alert-banner.success {
+            background: linear-gradient(90deg, rgba(67, 233, 123, 0.15), rgba(79, 172, 254, 0.1));
+            border-color: rgba(67, 233, 123, 0.4);
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-12px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .grid-4 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .card {
+            background: linear-gradient(135deg, var(--surface) 0%, var(--surface-alt) 100%);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 18px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .card:hover {
+            transform: translateY(-4px);
+            border-color: var(--border-light);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .card.metric-card {
+            border-left: 4px solid var(--blue);
+        }
+
+        .card.metric-card.warning {
+            border-left-color: var(--amber);
+            background: linear-gradient(135deg, rgba(246, 168, 33, 0.1), var(--surface-alt));
+        }
+
+        .card.metric-card.critical {
+            border-left-color: var(--red);
+            background: linear-gradient(135deg, rgba(255, 77, 109, 0.15), var(--surface-alt));
+            border: 1px solid rgba(255, 77, 109, 0.3);
+        }
+
+        .card-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .card-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--blue);
+            font-family: 'Courier New', monospace;
+            line-height: 1;
+        }
+
+        .card.metric-card.warning .card-value {
+            color: var(--amber);
+        }
+
+        .card.metric-card.critical .card-value {
+            color: var(--red);
+        }
+
+        .card-sub {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 8px;
+        }
+
+        .vm-box {
+            background: linear-gradient(135deg, var(--surface) 0%, var(--surface-alt) 100%);
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            padding: 18px;
+            margin-bottom: 16px;
+            transition: all 0.3s ease;
+        }
+
+        .vm-box.active {
+            border-color: var(--green);
+            box-shadow: 0 0 20px rgba(67, 233, 123, 0.2);
+        }
+
+        .vm-box.inactive {
+            opacity: 0.6;
+            border-color: var(--text-muted);
+        }
+
+        .vm-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .vm-id {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text);
+            font-family: 'Courier New', monospace;
+        }
+
+        .vm-status-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 10px;
+            font-weight: 600;
+            background: rgba(67, 233, 123, 0.2);
+            color: var(--green);
+        }
+
+        .vm-status-badge.stopped {
+            background: rgba(255, 77, 109, 0.2);
+            color: var(--red);
+        }
+
+        .vm-metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            font-size: 12px;
+        }
+
+        .vm-metric {
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 6px;
+            border-left: 3px solid var(--blue);
+        }
+
+        .vm-metric-label {
+            color: var(--text-secondary);
+            font-size: 10px;
+            text-transform: uppercase;
+        }
+
+        .vm-metric-value {
+            color: var(--blue);
+            font-weight: 700;
+            font-size: 14px;
+            margin-top: 2px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            animation: fadeInModal 0.3s ease;
+        }
+
+        .modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        @keyframes fadeInModal {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .modal-content {
+            background: linear-gradient(135deg, var(--surface) 0%, var(--surface-alt) 100%);
+            border: 2px solid var(--border);
+            border-radius: 16px;
+            padding: 28px;
+            max-width: 500px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            animation: slideUpModal 0.3s ease;
+        }
+
+        @keyframes slideUpModal {
+            from {
+                opacity: 0;
+                transform: translateY(40px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .modal-icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+        }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 8px;
+        }
+
+        .modal-message {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+
+        .modal-metrics {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 18px;
+            font-size: 12px;
+        }
+
+        .modal-metric-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .modal-metric-row:last-child {
+            border-bottom: none;
+        }
+
+        .modal-metric-label {
+            color: var(--text-secondary);
+        }
+
+        .modal-metric-value {
+            color: var(--amber);
+            font-weight: 700;
+            font-family: 'Courier New', monospace;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 12px 16px;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--blue), var(--cyan));
+            color: white;
+            box-shadow: 0 4px 12px rgba(79, 172, 254, 0.3);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(79, 172, 254, 0.4);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, var(--green), var(--cyan));
+            color: white;
+            box-shadow: 0 4px 12px rgba(67, 233, 123, 0.3);
+        }
+
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(67, 233, 123, 0.4);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, var(--red), #ff6b7a);
+            color: white;
+            box-shadow: 0 4px 12px rgba(255, 77, 109, 0.3);
+        }
+
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255, 77, 109, 0.4);
+        }
+
+        .chart-container {
+            background: linear-gradient(135deg, var(--surface) 0%, var(--surface-alt) 100%);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 18px;
+            margin-bottom: 24px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .chart-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        canvas {
+            max-height: 300px;
+        }
+
+        .section-header {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid var(--border);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .section-header.highlight {
+            color: var(--amber);
+            border-bottom-color: var(--amber);
+        }
+
+        .timeline {
+            position: relative;
+            padding-left: 30px;
+        }
+
+        .timeline-item {
+            position: relative;
+            padding-bottom: 24px;
+            border-left: 2px solid var(--border);
+        }
+
+        .timeline-item:last-child {
+            border-left-color: transparent;
+        }
+
+        .timeline-dot {
+            position: absolute;
+            left: -8px;
+            top: 0;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: var(--blue);
+            border: 2px solid var(--surface);
+        }
+
+        .timeline-item.warning .timeline-dot {
+            background: var(--amber);
+        }
+
+        .timeline-item.success .timeline-dot {
+            background: var(--green);
+        }
+
+        .timeline-item.error .timeline-dot {
+            background: var(--red);
+        }
+
+        .timeline-content {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .timeline-time {
+            color: var(--text-muted);
+            font-size: 10px;
+            margin-bottom: 4px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .timeline-text {
+            color: var(--text);
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+
+        .table th {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 10px 12px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--text);
+            border-bottom: 2px solid var(--border);
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+        }
+
+        .table td {
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+
+        .table tr:hover {
+            background: rgba(79, 172, 254, 0.05);
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 12px;
+            }
+
+            .grid-4 {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .modal-content {
+                width: 90%;
+                margin: 20px;
+            }
+
+            .topbar {
+                flex-wrap: wrap;
+            }
+
+            .tab-nav {
+                overflow-x: auto;
+            }
+        }
+    </style>
 </head>
 <body>
-
-<div class="topbar">
-  <div class="topbar-brand">
-    <div class="brand-icon">⚙</div>
-    VM CAPACITY PLANNER
-  </div>
-  <div class="topbar-right">
-    <span class="update-time" id="last-updated">Connecting...</span>
-    <div class="status-dot" id="status-dot"></div>
-  </div>
-</div>
-
-<div class="nav">
-  <button class="nav-btn active" onclick="switchTab('dashboard')">Live Dashboard</button>
-  <button class="nav-btn" onclick="switchTab('report')">Capacity Report</button>
-</div>
-
-<div class="debug-bar" id="debug-bar">Fetching metrics...</div>
-
-<div id="alert-banner" class="banner alert hidden">
-  <span>🚨</span><span id="alert-text"></span>
-  <button onclick="this.parentElement.classList.add('hidden')">✕</button>
-</div>
-<div id="predict-banner" class="banner predict hidden">
-  <span>⚠</span><span id="predict-text"></span>
-  <button onclick="this.parentElement.classList.add('hidden')">✕</button>
-</div>
-<!-- AUTOSCALE BANNER -->
-<div id="autoscale-banner" class="banner hidden" style="background:rgba(167,139,250,.15);color:#c4b5fd;border-color:rgba(167,139,250,.4);">
-  <span>🔄</span>
-  <div>
-    <strong>AUTO-SCALING TRIGGERED</strong>
-    <span id="autoscale-text"> — checking...</span>
-  </div>
-  <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
-    <span id="autoscale-new-ip" style="font-family:monospace;font-size:12px;background:rgba(0,0,0,.3);padding:2px 8px;border-radius:4px"></span>
-    <button id="autoscale-switch-btn" onclick="switchToNewVM()" style="background:#7c3aed;border:none;color:white;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">Switch Now</button>
-    <button onclick="acknowledgeAutoscale()" style="background:none;border:none;color:inherit;font-size:16px;cursor:pointer">✕</button>
-  </div>
-</div>
-<!-- ═══════════════════════════ DASHBOARD ════════════════════════════════════ -->
-<div id="tab-dashboard" class="tab-panel active">
-<div class="dash">
-
-  <div class="config-bar">
-    <strong>Alert Thresholds:</strong>
-    <label>CPU &gt;
-      <input type="range" id="cpu-thresh" min="0.5" max="1" step="0.01" value="0.8"
-        oninput="CPU_THRESHOLD=+this.value;document.getElementById('cpu-tv').textContent=pct(CPU_THRESHOLD)">
-      <span class="cfg-val" id="cpu-tv">80%</span>
-    </label>
-    <label>Memory &gt;
-      <input type="range" id="mem-thresh" min="0.1" max="1" step="0.01" value="0.2"
-        oninput="MEM_THRESHOLD=+this.value;document.getElementById('mem-tv').textContent=pct(MEM_THRESHOLD)">
-      <span class="cfg-val" id="mem-tv">20%</span>
-    </label>
-    <span class="config-sep">| Auto-refresh every 10s</span>
-  </div>
-
-  <!-- Current Metrics -->
-  <div class="sec-label">Current Metrics</div>
-  <div class="stat-grid">
-    <div class="stat-card" id="sc-cpu-avg">
-      <div class="stat-card-label">Avg CPU</div>
-      <div class="stat-card-value" id="sv-cpu-avg">—</div>
-      <div class="stat-card-sub">last 50 readings</div>
-    </div>
-    <div class="stat-card" id="sc-cpu-peak">
-      <div class="stat-card-label">Peak CPU</div>
-      <div class="stat-card-value" id="sv-cpu-peak">—</div>
-      <div class="stat-card-sub">highest reading</div>
-    </div>
-    <div class="stat-card" id="sc-mem-avg">
-      <div class="stat-card-label">Avg Memory</div>
-      <div class="stat-card-value" id="sv-mem-avg">—</div>
-      <div class="stat-card-sub">last 50 readings</div>
-    </div>
-    <div class="stat-card" id="sc-mem-peak">
-      <div class="stat-card-label">Peak Memory</div>
-      <div class="stat-card-value" id="sv-mem-peak">—</div>
-      <div class="stat-card-sub">highest reading</div>
-    </div>
-  </div>
-
-  <!-- Regression Trend -->
-  <div class="sec-label">Linear Regression — Trend &amp; Forecast (y = mx + c)</div>
-  <div class="trend-grid">
-    <div class="trend-card nodata" id="tc-cpu-slope">
-      <div class="trend-label">CPU Slope (m)</div>
-      <div class="trend-value" id="tv-cpu-slope">Loading…</div>
-      <div class="trend-sub" id="ts-cpu-slope">waiting for data</div>
-    </div>
-    <div class="trend-card nodata" id="tc-cpu-fc">
-      <div class="trend-label">CPU Next Predicted</div>
-      <div class="trend-value" id="tv-cpu-fc">Loading…</div>
-      <div class="trend-sub">T+1 reading</div>
-    </div>
-    <div class="trend-card nodata" id="tc-mem-slope">
-      <div class="trend-label">Memory Slope (m)</div>
-      <div class="trend-value" id="tv-mem-slope">Loading…</div>
-      <div class="trend-sub" id="ts-mem-slope">waiting for data</div>
-    </div>
-    <div class="trend-card nodata" id="tc-mem-fc">
-      <div class="trend-label">Memory Next Predicted</div>
-      <div class="trend-value" id="tv-mem-fc">Loading…</div>
-      <div class="trend-sub">T+1 reading</div>
-    </div>
-  </div>
-
-  <!-- Breach Prediction -->
-  <div class="sec-label">Breach Prediction — Projected Values &amp; Time to Threshold</div>
-  <div class="breach-grid">
-    <!-- CPU breach -->
-    <div class="breach-card">
-      <div class="breach-card-title">
-        <span style="color:var(--cpu)">◉</span> CPU Breach Forecast
-        <span style="margin-left:auto;font-size:10px;color:var(--text3)">Threshold: <span id="bc-cpu-thr" style="color:var(--text2)">80%</span></span>
-      </div>
-      <div class="breach-body">
-        <div class="breach-icon" id="bi-cpu">⏳</div>
-        <div class="breach-info">
-          <div class="breach-status nodata" id="bs-cpu">Awaiting data</div>
-          <div class="breach-note" id="bn-cpu">Need ≥2 readings for regression</div>
-          <div class="breach-projections" id="bp-cpu"></div>
+    <!-- Top Bar -->
+    <div class="topbar">
+        <div class="topbar-brand">
+            <div class="brand-icon">☁️</div>
+            <span>VM CAPACITY PLANNER</span>
         </div>
-      </div>
+        <div class="topbar-right">
+            <div class="status-indicator">
+                <div class="status-dot" id="status-dot"></div>
+                <span id="status-text">System Normal</span>
+            </div>
+            <div style="font-size: 12px; color: var(--text-secondary);" id="last-updated">Initializing...</div>
+        </div>
     </div>
-    <!-- Memory breach -->
-    <div class="breach-card">
-      <div class="breach-card-title">
-        <span style="color:var(--mem)">◉</span> Memory Breach Forecast
-        <span style="margin-left:auto;font-size:10px;color:var(--text3)">Threshold: <span id="bc-mem-thr" style="color:var(--text2)">20%</span></span>
-      </div>
-      <div class="breach-body">
-        <div class="breach-icon" id="bi-mem">⏳</div>
-        <div class="breach-info">
-          <div class="breach-status nodata" id="bs-mem">Awaiting data</div>
-          <div class="breach-note" id="bn-mem">Need ≥2 readings for regression</div>
-          <div class="breach-projections" id="bp-mem"></div>
-        </div>
-      </div>
+
+    <!-- Tab Navigation -->
+    <div class="tab-nav">
+        <button class="tab-btn active" onclick="switchTab(event, 'live-dashboard')">📊 Live Dashboard</button>
+        <button class="tab-btn" onclick="switchTab(event, 'capacity-report')">📈 Capacity Report</button>
+        <button class="tab-btn" id="ack-tab" onclick="switchTab(event, 'acknowledgement')">🔔 Acknowledgements</button>
+        <button class="tab-btn" onclick="switchTab(event, 'vm-management')">🖥️ VM Management</button>
     </div>
-  </div>
 
-  <!-- Capacity Panel -->
-  <div class="sec-label">Capacity Planning — Headroom &amp; Scale Recommendations</div>
-  <div class="capacity-panel">
-    <div class="capacity-header">
-      <h2>📊 Scaling Recommendation</h2>
-      <span class="urgency-badge ok" id="cap-urgency-badge">OK</span>
+    <!-- Alerts -->
+    <div class="alert-banner hidden" id="alert-banner" style="margin: 16px 24px 0; margin-bottom: 0;">
+        <span id="alert-icon">⚠️</span>
+        <span id="alert-text">Resource usage alert</span>
+        <button onclick="closeAlertBanner()" style="margin-left: auto; background: none; border: none; color: inherit; cursor: pointer; font-size: 18px;">&times;</button>
     </div>
-    <div class="capacity-body">
-      <div>
-        <div class="headroom-title">Resource Headroom</div>
-        <div class="headroom-bar-wrap">
-          <div class="headroom-bar-label">
-            <span>CPU Usage</span><span id="hw-cpu-pct">—</span>
-          </div>
-          <div class="headroom-bar"><div class="headroom-bar-fill cpu" id="hw-cpu-bar" style="width:0%"></div></div>
+
+    <!-- ============ TAB: LIVE DASHBOARD ============ -->
+    <div id="live-dashboard" class="tab-panel active">
+        <div class="container">
+            <div class="alert-banner hidden" id="autoscale-alert" style="margin-bottom: 16px;">
+                <span>⚡</span>
+                <span id="autoscale-message">Autoscaling in progress...</span>
+            </div>
+
+            <div class="section-header">📊 Current Metrics</div>
+            <div class="grid-4">
+                <div class="card metric-card" id="card-cpu">
+                    <div class="card-label">CPU Usage</div>
+                    <div class="card-value" id="stat-cpu">--</div>
+                    <div class="card-sub" id="stat-cpu-trend">Loading...</div>
+                </div>
+                <div class="card metric-card" id="card-mem">
+                    <div class="card-label">Memory Usage</div>
+                    <div class="card-value" id="stat-mem">--</div>
+                    <div class="card-sub" id="stat-mem-trend">Loading...</div>
+                </div>
+                <div class="card metric-card" id="card-peak-cpu">
+                    <div class="card-label">Peak CPU</div>
+                    <div class="card-value" id="stat-peak-cpu">--</div>
+                    <div class="card-sub" id="stat-peak-cpu-avg">Average shown</div>
+                </div>
+                <div class="card metric-card" id="card-peak-mem">
+                    <div class="card-label">Peak Memory</div>
+                    <div class="card-value" id="stat-peak-mem">--</div>
+                    <div class="card-sub" id="stat-peak-mem-avg">Average shown</div>
+                </div>
+            </div>
+
+            <div class="section-header">📉 Resource Trends</div>
+            <div class="chart-container">
+                <div class="chart-title">CPU & Memory Over Time</div>
+                <canvas id="lineChart"></canvas>
+            </div>
+
+            <div class="chart-container">
+                <div class="chart-title">CPU vs Memory Distribution</div>
+                <canvas id="scatterChart"></canvas>
+            </div>
         </div>
-        <div class="headroom-bar-wrap">
-          <div class="headroom-bar-label">
-            <span>Memory Usage</span><span id="hw-mem-pct">—</span>
-          </div>
-          <div class="headroom-bar"><div class="headroom-bar-fill mem" id="hw-mem-bar" style="width:0%"></div></div>
-        </div>
-        <div class="headroom-spec" id="hw-spec">
-          <span class="spec-tag">CPU: — cores</span>
-          <span class="spec-tag">RAM: — GB</span>
-        </div>
-        <div style="font-size:11px;color:var(--text3);margin-top:8px" id="hw-headroom-text"></div>
-      </div>
-      <div class="capacity-actions" id="cap-actions">
-        <div class="cap-action ok">
-          <div class="cap-action-icon">⏳</div>
-          <div class="cap-action-body">
-            <div class="cap-action-title">Loading recommendations...</div>
-            <div class="cap-action-reason">Fetching metrics</div>
-          </div>
-        </div>
-      </div>
     </div>
-  </div>
 
-  <!-- Forecast Horizon -->
-  <div class="forecast-section">
-    <div class="chart-hdr" style="margin-bottom:10px">
-      <div>
-        <h2 style="font-size:13px">Future Trend Forecast — Next 30 Readings (~30 min)</h2>
-        <div class="chart-sub">Based on linear regression (y = mx + c) extrapolated forward</div>
-      </div>
-      <div class="forecast-tabs">
-        <button class="fc-tab active" onclick="showFcTab('cpu',this)">CPU</button>
-        <button class="fc-tab" onclick="showFcTab('mem',this)">Memory</button>
-      </div>
-    </div>
-    <div class="forecast-row" id="fc-row-cpu"></div>
-    <div class="forecast-row hidden" id="fc-row-mem"></div>
-  </div>
+    <!-- ============ TAB: CAPACITY REPORT ============ -->
+    <div id="capacity-report" class="tab-panel">
+        <div class="container">
+            <div class="section-header">📈 Detailed Capacity Analysis</div>
 
-  <!-- Line Chart -->
-  <div class="chart-card">
-    <div class="chart-hdr">
-      <div>
-        <h2>CPU &amp; Memory Over Time + Regression Lines</h2>
-        <div class="chart-sub">Solid = actual &nbsp;·&nbsp; Dashed = trend (y = mx + c) &nbsp;·&nbsp; Dotted = threshold</div>
-      </div>
-      <div class="legend">
-        <span><span class="ldot" style="background:var(--cpu)"></span>CPU actual</span>
-        <span><span class="ldot" style="background:var(--mem)"></span>Memory actual</span>
-        <span><span class="ldot" style="background:var(--cpu-trend)"></span>CPU trend</span>
-        <span><span class="ldot" style="background:var(--mem-trend)"></span>Mem trend</span>
-      </div>
-    </div>
-    <canvas id="lineChart"></canvas>
-  </div>
+            <div class="grid-2">
+                <div class="card">
+                    <div class="card-label">📊 CPU Analysis</div>
+                    <div style="margin-top: 12px;">
+                        <div style="display: flex; justify-content: space-between; margin: 8px 0;">
+                            <span style="color: var(--text-secondary);">Average:</span>
+                            <span id="report-cpu-avg" style="color: var(--blue); font-weight: 700;">--</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin: 8px 0;">
+                            <span style="color: var(--text-secondary);">Peak:</span>
+                            <span id="report-cpu-peak" style="color: var(--amber); font-weight: 700;">--</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin: 8px 0;">
+                            <span style="color: var(--text-secondary);">Minimum:</span>
+                            <span id="report-cpu-min" style="color: var(--green); font-weight: 700;">--</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin: 8px 0;">
+                            <span style="color: var(--text-secondary);">Trend:</span>
+                            <span id="report-cpu-trend" style="color: var(--cyan); font-weight: 700;">--</span>
+                        </div>
+                    </div>
+                </div>
 
-  <!-- Scatter -->
-  <div class="chart-card">
-    <div class="chart-hdr">
-      <div>
-        <h2>CPU vs Memory — Correlation Scatter</h2>
-        <div class="chart-sub">Red ▲ = both CPU &gt; <span id="sc-thr-cpu">80%</span> AND Memory &gt; <span id="sc-thr-mem">20%</span> at same time</div>
-      </div>
-      <div class="legend">
-        <span><span class="ldot" style="background:rgba(79,172,254,.7)"></span>Normal</span>
-        <span style="color:var(--red)">▲ High load (both over threshold)</span>
-      </div>
-    </div>
-    <canvas id="scatterChart"></canvas>
-    <div class="scatter-note" id="scatter-note">No high-load points detected.</div>
-  </div>
+                <div class="card">
+                    <div class="card-label">💾 Memory Analysis</div>
+                    <div style="margin-top: 12px;">
+                        <div style="display: flex; justify-content: space-between; margin: 8px 0;">
+                            <span style="color: var(--text-secondary);">Average:</span>
+                            <span id="report-mem-avg" style="color: var(--green); font-weight: 700;">--</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin: 8px 0;">
+                            <span style="color: var(--text-secondary);">Peak:</span>
+                            <span id="report-mem-peak" style="color: var(--amber); font-weight: 700;">--</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin: 8px 0;">
+                            <span style="color: var(--text-secondary);">Minimum:</span>
+                            <span id="report-mem-min" style="color: var(--blue); font-weight: 700;">--</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin: 8px 0;">
+                            <span style="color: var(--text-secondary);">Trend:</span>
+                            <span id="report-mem-trend" style="color: var(--cyan); font-weight: 700;">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-</div>
-</div>
+            <div class="section-header highlight" style="margin-top: 24px;">⚡ Autoscaling History</div>
+            <div id="autoscale-history-container">
+                <div style="text-align: center; color: var(--text-secondary); padding: 40px 20px;">
+                    <p style="margin-bottom: 10px;">✓ No autoscaling events yet</p>
+                    <p style="font-size: 12px;">System is operating within normal parameters</p>
+                </div>
+            </div>
 
-<!-- ═══════════════════════════ REPORT ══════════════════════════════════════ -->
-<div id="tab-report" class="tab-panel">
-<div class="report-wrap">
-  <div id="report-loading">Loading capacity planning report...</div>
-  <div class="report-card hidden" id="report-content">
-    <div class="report-hdr">
-      <h2>VM Capacity Planning Report</h2>
-      <p id="rpt-ts">Generated: —</p>
-      <p id="rpt-samples" style="margin-top:3px"></p>
-    </div>
-    <div class="report-body">
-
-      <div class="rsec">
-        <h3>CPU Analysis</h3>
-        <div class="rgrid">
-          <div class="rm"><div class="rl">Average</div><div class="rv" id="r-cpu-avg">—</div></div>
-          <div class="rm"><div class="rl">Peak</div><div class="rv" id="r-cpu-peak">—</div></div>
-          <div class="rm"><div class="rl">Minimum</div><div class="rv" id="r-cpu-min">—</div></div>
-          <div class="rm"><div class="rl">Trend Direction</div><div class="rv" id="r-cpu-dir">—</div></div>
-          <div class="rm"><div class="rl">Slope (m)</div><div class="rv" id="r-cpu-slope">—</div></div>
-          <div class="rm"><div class="rl">Metric Source</div><div class="rv" style="font-size:11px" id="r-cpu-type">—</div></div>
+            <div class="section-header" style="margin-top: 24px;">🔍 Detailed Event Log</div>
+            <div style="overflow-x: auto;">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Event Type</th>
+                            <th>From VM</th>
+                            <th>To VM</th>
+                            <th>CPU</th>
+                            <th>Memory</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="event-log-body">
+                        <tr>
+                            <td colspan="7" style="text-align: center; color: var(--text-muted);">No events recorded</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
-        <div style="margin-bottom:8px">
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Forecast T+1 → T+10 (next 10 readings)</div>
-          <div class="fc-horizon" id="r-cpu-fc-row"></div>
-        </div>
-        <table class="rtable">
-          <tr><th>Metric</th><th>Value</th><th>Status</th></tr>
-          <tr><td>Samples collected</td><td id="r-cpu-n">—</td><td></td></tr>
-          <tr><td>Breach predicted?</td><td id="r-cpu-breach">—</td><td id="r-cpu-breach-st">—</td></tr>
-          <tr><td>Time until breach</td><td id="r-cpu-breach-t">—</td><td></td></tr>
-          <tr><td>Value at breach point</td><td id="r-cpu-breach-v">—</td><td></td></tr>
-          <tr><td>Current projected value</td><td id="r-cpu-proj">—</td><td></td></tr>
-        </table>
-      </div>
-
-      <div class="rsec">
-        <h3>Memory Analysis</h3>
-        <div class="rgrid">
-          <div class="rm"><div class="rl">Average</div><div class="rv" id="r-mem-avg">—</div></div>
-          <div class="rm"><div class="rl">Peak</div><div class="rv" id="r-mem-peak">—</div></div>
-          <div class="rm"><div class="rl">Minimum</div><div class="rv" id="r-mem-min">—</div></div>
-          <div class="rm"><div class="rl">Trend Direction</div><div class="rv" id="r-mem-dir">—</div></div>
-          <div class="rm"><div class="rl">Slope (m)</div><div class="rv" id="r-mem-slope">—</div></div>
-          <div class="rm"><div class="rl">Metric Source</div><div class="rv" style="font-size:11px" id="r-mem-type">—</div></div>
-        </div>
-        <div style="margin-bottom:8px">
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Forecast T+1 → T+10 (next 10 readings)</div>
-          <div class="fc-horizon" id="r-mem-fc-row"></div>
-        </div>
-        <table class="rtable">
-          <tr><th>Metric</th><th>Value</th><th>Status</th></tr>
-          <tr><td>Samples collected</td><td id="r-mem-n">—</td><td></td></tr>
-          <tr><td>Breach predicted?</td><td id="r-mem-breach">—</td><td id="r-mem-breach-st">—</td></tr>
-          <tr><td>Time until breach</td><td id="r-mem-breach-t">—</td><td></td></tr>
-          <tr><td>Value at breach point</td><td id="r-mem-breach-v">—</td><td></td></tr>
-          <tr><td>Current projected value</td><td id="r-mem-proj">—</td><td></td></tr>
-        </table>
-      </div>
-
-      <div class="rsec">
-        <h3>Capacity &amp; Scaling Plan</h3>
-        <div class="cap-actions-report" id="r-cap-actions"></div>
-        <div style="margin-top:12px">
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Resource Headroom</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px" id="r-headroom"></div>
-        </div>
-      </div>
-
-      <div class="rsec">
-        <h3>Recommendation</h3>
-        <div class="rec-box ok" id="r-rec-box">
-          <div class="rec-label">Action Required</div>
-          <div class="rec-text" id="r-rec-text">—</div>
-        </div>
-      </div>
-
-      <div class="rpt-btns">
-        <button class="rpt-btn blue" onclick="printReport()">🖨 Print / Save PDF</button>
-        <button class="rpt-btn green" onclick="loadReport()">↺ Refresh Report</button>
-      </div>
     </div>
-  </div>
-</div>
-</div>
 
-<!-- Modal -->
-<div id="autoscale-modal" class="modal-overlay hidden">
-  <div class="modal">
-    <div class="modal-icon">🚨</div>
-    <h2>Auto-scaling Required!</h2>
-    <p>Resource usage has crossed or is predicted to breach the configured threshold.</p>
-    <div class="modal-stats">
-      <div class="msi"><div class="ml">Avg CPU</div><div class="mv" id="m-cpu-avg">—</div></div>
-      <div class="msi"><div class="ml">Peak CPU</div><div class="mv" id="m-cpu-peak">—</div></div>
-      <div class="msi"><div class="ml">Avg Memory</div><div class="mv" id="m-mem-avg">—</div></div>
-      <div class="msi"><div class="ml">Peak Memory</div><div class="mv" id="m-mem-peak">—</div></div>
-    </div>
-    <div class="modal-fc">
-      <div class="modal-fc-title">Regression Forecast — Next 3 Readings</div>
-      <div class="modal-fc-row">
-        <div class="modal-fc-col" style="flex:1"><div class="mfl">CPU T+1/T+2/T+3</div><div class="mfv" id="m-cpu-fc">—</div></div>
-        <div class="modal-fc-col" style="flex:1"><div class="mfl">Mem T+1/T+2/T+3</div><div class="mfv" id="m-mem-fc">—</div></div>
-      </div>
-    </div>
-    <div class="modal-reason" id="modal-reason"></div>
-    <button class="modal-btn" onclick="closeModal()">Acknowledge</button>
-  </div>
-</div>
+    <!-- ============ TAB: ACKNOWLEDGEMENTS ============ -->
+    <div id="acknowledgement" class="tab-panel">
+        <div class="container">
+            <div class="section-header">🔔 Autoscale Acknowledgements</div>
 
-<script>
-// ── Config ───────────────────────────────────────────────────────────────────
-let CPU_THRESHOLD = 0.80;
-let MEM_THRESHOLD = 0.20;
-const BACKEND_URL = "http://35.200.143.64:8000";
-const REFRESH_MS  = 10_000;
-const MAX_POINTS  = 20;
+            <div id="ack-container" style="text-align: center; color: var(--text-secondary); padding: 60px 20px;">
+                <p style="font-size: 18px; margin-bottom: 10px;">✓ No Pending Acknowledgements</p>
+                <p>System is operating normally</p>
+            </div>
 
-let lineChart = null, scatterChart = null, modalShown = false;
-let lastCpuTrend = null, lastMemTrend = null;
-
-const pct   = v => (v*100).toFixed(1)+"%";
-const avg   = a => a.length ? a.reduce((s,v)=>s+v,0)/a.length : 0;
-const peak  = a => a.length ? Math.max(...a) : 0;
-const tsLbl = u => new Date(u*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",second:"2-digit"});
-
-function switchTab(name){
-  document.querySelectorAll(".tab-panel").forEach(p=>p.classList.remove("active"));
-  document.querySelectorAll(".nav-btn").forEach(b=>b.classList.remove("active"));
-  document.getElementById("tab-"+name).classList.add("active");
-  document.querySelectorAll(".nav-btn")[name==="dashboard"?0:1].classList.add("active");
-  if(name==="report") loadReport();
-}
-
-function showFcTab(which, btn){
-  document.querySelectorAll(".fc-tab").forEach(b=>b.classList.remove("active"));
-  btn.classList.add("active");
-  document.getElementById("fc-row-cpu").classList.toggle("hidden", which!=="cpu");
-  document.getElementById("fc-row-mem").classList.toggle("hidden", which!=="mem");
-}
-
-// ── Charts ───────────────────────────────────────────────────────────────────
-const threshPlugin = {
-  id:"thr",
-  afterDraw(chart){
-    const{ctx:c,chartArea:{left,right},scales:{y}}=chart;
-    [[CPU_THRESHOLD,"var(--cpu)"],[MEM_THRESHOLD,"var(--mem)"]].forEach(([v,col])=>{
-      const yp=y.getPixelForValue(v);
-      c.save();c.beginPath();c.setLineDash([5,4]);
-      c.strokeStyle=col;c.lineWidth=1;c.globalAlpha=0.4;
-      c.moveTo(left,yp);c.lineTo(right,yp);c.stroke();c.restore();
-    });
-  }
-};
-Chart.defaults.color="#7a99c0";Chart.defaults.borderColor="#1e2d45";
-
-function buildLineChart(labels,cpu,mem,cpuT,memT){
-  const ctx=document.getElementById("lineChart").getContext("2d");
-  lineChart=new Chart(ctx,{type:"line",plugins:[threshPlugin],data:{labels,datasets:[
-    {label:"CPU actual",  data:cpu, borderColor:"#4facfe",backgroundColor:"rgba(79,172,254,.08)",tension:.4,pointRadius:3,fill:true,borderWidth:2},
-    {label:"Memory actual",data:mem,borderColor:"#43e97b",backgroundColor:"rgba(67,233,123,.06)",tension:.4,pointRadius:3,fill:true,borderWidth:2},
-    {label:"CPU trend",   data:cpuT,borderColor:"#f6a821",borderDash:[6,3],borderWidth:1.5,pointRadius:0,fill:false,tension:0},
-    {label:"Mem trend",   data:memT,borderColor:"#a78bfa",borderDash:[6,3],borderWidth:1.5,pointRadius:0,fill:false,tension:0},
-  ]},options:{
-    responsive:true,interaction:{mode:"index",intersect:false},
-    scales:{
-      y:{min:0,max:1,ticks:{callback:v=>(v*100).toFixed(0)+"%"},grid:{color:"#1e2d45"}},
-      x:{grid:{color:"#1e2d45"},ticks:{maxTicksLimit:8}}
-    },
-    plugins:{
-      legend:{display:true,labels:{color:"#7a99c0",font:{size:11},boxWidth:20,usePointStyle:true}},
-      tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${pct(+c.raw)}`}}
-    }
-  }});
-}
-function updateLineChart(labels,cpu,mem,cpuT,memT){
-  lineChart.data.labels=labels;
-  [cpu,mem,cpuT,memT].forEach((d,i)=>lineChart.data.datasets[i].data=d);
-  lineChart.update("none");
-}
-
-function splitPts(cpu,mem){
-  const n=[],h=[],len=Math.min(cpu.length,mem.length);
-  for(let i=0;i<len;i++){
-    const p={x:cpu[i],y:mem[i]};
-    (cpu[i]>CPU_THRESHOLD&&mem[i]>MEM_THRESHOLD)?h.push(p):n.push(p);
-  }
-  return{n,h};
-}
-function buildScatterChart(cpu,mem){
-  const ctx=document.getElementById("scatterChart").getContext("2d");
-  const{n,h}=splitPts(cpu,mem);
-  scatterChart=new Chart(ctx,{type:"scatter",data:{datasets:[
-    {label:"Normal",   data:n,backgroundColor:"rgba(79,172,254,.6)",pointRadius:6},
-    {label:"High load",data:h,backgroundColor:"rgba(255,77,109,.8)",pointRadius:8,pointStyle:"triangle"}
-  ]},options:{
-    responsive:true,
-    scales:{
-      x:{title:{display:true,text:"CPU Usage",color:"#7a99c0"},min:0,max:1,ticks:{callback:v=>(v*100)+"%"},grid:{color:"#1e2d45"}},
-      y:{title:{display:true,text:"Memory Usage",color:"#7a99c0"},min:0,max:1,ticks:{callback:v=>(v*100)+"%"},grid:{color:"#1e2d45"}}
-    },
-    plugins:{legend:{labels:{color:"#7a99c0"}},tooltip:{callbacks:{label:c=>` CPU:${pct(c.raw.x)} Mem:${pct(c.raw.y)}`}}}
-  }});
-}
-function updateScatterChart(cpu,mem){
-  const{n,h}=splitPts(cpu,mem);
-  [n,h].forEach((d,i)=>scatterChart.data.datasets[i].data=d);
-  scatterChart.update("none");
-  const note=document.getElementById("scatter-note");
-  document.getElementById("sc-thr-cpu").textContent=pct(CPU_THRESHOLD);
-  document.getElementById("sc-thr-mem").textContent=pct(MEM_THRESHOLD);
-  if(h.length>0){
-    note.textContent=`${h.length} high-load point(s) — CPU > ${pct(CPU_THRESHOLD)} AND Memory > ${pct(MEM_THRESHOLD)} simultaneously.`;
-    note.className="scatter-note high";
-  } else {
-    note.textContent=`No high-load points — red ▲ appear only when BOTH CPU > ${pct(CPU_THRESHOLD)} AND Memory > ${pct(MEM_THRESHOLD)} at same reading.`;
-    note.className="scatter-note";
-  }
-}
-
-// ── Stat cards ───────────────────────────────────────────────────────────────
-function updateStats(cpu,mem){
-  const ca=avg(cpu),cp=peak(cpu),ma=avg(mem),mp=peak(mem);
-  [["sc-cpu-avg","sv-cpu-avg",ca,CPU_THRESHOLD],
-   ["sc-cpu-peak","sv-cpu-peak",cp,CPU_THRESHOLD],
-   ["sc-mem-avg","sv-mem-avg",ma,MEM_THRESHOLD],
-   ["sc-mem-peak","sv-mem-peak",mp,MEM_THRESHOLD]
-  ].forEach(([cid,vid,v,thr])=>{
-    document.getElementById(vid).textContent=pct(v);
-    const el=document.getElementById(cid);
-    el.className="stat-card"+(v>=thr*1.1?" crit":v>=thr?" warn":"");
-  });
-  document.getElementById("m-cpu-avg").textContent=pct(ca);
-  document.getElementById("m-cpu-peak").textContent=pct(cp);
-  document.getElementById("m-mem-avg").textContent=pct(ma);
-  document.getElementById("m-mem-peak").textContent=pct(mp);
-}
-
-// ── Trend cards ───────────────────────────────────────────────────────────────
-function updateTrendCards(cpuT,memT,cpuRows,memRows){
-  function apply(tcSlope,tcFc,tvSlope,tvFc,tsSub,trend,thr,mFcId,rows){
-    const cs=document.getElementById(tcSlope), cf=document.getElementById(tcFc);
-    if(!trend){
-      cs.className="trend-card nodata"; cf.className="trend-card nodata";
-      document.getElementById(tvSlope).textContent=rows===0?"No data":rows===1?"1 row (need ≥2)":"Need more data";
-      document.getElementById(tvFc).textContent=rows===0?"No data":"Need more…";
-      document.getElementById(tsSub).textContent=rows===0?"0 rows — check backend /debug":`${rows} row(s) fetched — need ≥2`;
-      if(mFcId) document.getElementById(mFcId).textContent="—";
-      return;
-    }
-    const{slope,forecast,direction,n}=trend;
-    const next=forecast[0];
-    const st=direction==="rising"&&next>thr?"critical":direction==="rising"?"rising":"stable";
-    cs.className="trend-card "+st; cf.className="trend-card "+(next>thr*1.1?"critical":next>thr?"rising":"stable");
-    document.getElementById(tvSlope).textContent=(slope>=0?"+":"")+(slope*100).toFixed(3)+"%/pt";
-    document.getElementById(tvFc).textContent=pct(next);
-    document.getElementById(tsSub).textContent=
-      (direction==="rising"?"↑ rising":direction==="falling"?"↓ falling":"→ stable")+` · ${n} pts`;
-    if(mFcId) document.getElementById(mFcId).textContent=forecast.slice(0,3).map(pct).join(" → ");
-  }
-  apply("tc-cpu-slope","tc-cpu-fc","tv-cpu-slope","tv-cpu-fc","ts-cpu-slope",cpuT,CPU_THRESHOLD,"m-cpu-fc",cpuRows);
-  apply("tc-mem-slope","tc-mem-fc","tv-mem-slope","tv-mem-fc","ts-mem-slope",memT,MEM_THRESHOLD,"m-mem-fc",memRows);
-}
-
-// ── Breach cards — now shows projected values at T+1, T+5, T+10 ───────────────
-function updateBreachCards(cpuB,memB,cpuRows,memRows){
-  document.getElementById("bc-cpu-thr").textContent=pct(CPU_THRESHOLD);
-  document.getElementById("bc-mem-thr").textContent=pct(MEM_THRESHOLD);
-
-  function apply(iconId,statusId,noteId,projId,breach,thr,rows){
-    const ie=document.getElementById(iconId);
-    const se=document.getElementById(statusId);
-    const ne=document.getElementById(noteId);
-    const pe=document.getElementById(projId);
-
-    if(!breach){
-      ie.textContent="⏳"; se.className="breach-status nodata";
-      se.textContent="Awaiting data";
-      ne.textContent=rows===0?"0 rows from backend — check /debug":`${rows} row(s) — need ≥2`;
-      pe.innerHTML=""; return;
-    }
-
-    // Build projected value pills
-    const projs=[
-      {label:"Now",  val:breach.current_projected},
-      {label:"T+1",  val:breach.projected_t1},
-      {label:"T+5",  val:breach.projected_t5},
-      {label:"T+10", val:breach.projected_t10},
-    ].filter(p=>p.val!=null);
-    pe.innerHTML=projs.map(p=>{
-      const over=p.val!=null&&p.val>thr;
-      return `<div class="proj-pill${over?" over":""}"><label>${p.label}</label>${pct(p.val??0)}</div>`;
-    }).join("");
-
-    if(!breach.will_breach){
-      ie.textContent="🟢"; se.className="breach-status ok";
-      se.textContent="No breach predicted";
-      ne.textContent=breach.reason||"Trend is flat or falling";
-    } else {
-      const m=breach.minutes_until_breach;
-      if(m===0){
-        ie.textContent="🔴"; se.className="breach-status crit";
-        se.textContent="Imminent! Already breached";
-        ne.textContent="Currently at or above threshold — immediate action needed";
-      } else if(m<30){
-        ie.textContent="🔴"; se.className="breach-status crit";
-        se.textContent=`~${m} min to breach`;
-        ne.textContent=breach.note||"";
-      } else {
-        ie.textContent="🟡"; se.className="breach-status warn";
-        se.textContent=`~${m} min to breach`;
-        ne.textContent=breach.note||"";
-      }
-    }
-  }
-  apply("bi-cpu","bs-cpu","bn-cpu","bp-cpu",cpuB,CPU_THRESHOLD,cpuRows);
-  apply("bi-mem","bs-mem","bn-mem","bp-mem",memB,MEM_THRESHOLD,memRows);
-}
-
-// ── Capacity panel ────────────────────────────────────────────────────────────
-const urgencyIcons={ok:"✓",monitor:"👁",warn:"⚠",critical:"🚨"};
-const urgencyLabels={ok:"ALL CLEAR",monitor:"MONITOR",warn:"WARNING",critical:"CRITICAL"};
-
-function updateCapacity(capacity,cpuAvg,memAvg){
-  if(!capacity) return;
-  const{urgency,actions,headroom}=capacity;
-
-  // Badge
-  const badge=document.getElementById("cap-urgency-badge");
-  badge.className="urgency-badge "+urgency;
-  badge.textContent=urgencyLabels[urgency]||urgency.toUpperCase();
-
-  // Headroom bars
-  const cpuPct=cpuAvg*100, memPct=memAvg*100;
-  const cpuOver=cpuAvg>CPU_THRESHOLD, memOver=memAvg>MEM_THRESHOLD;
-  document.getElementById("hw-cpu-pct").textContent=`${cpuPct.toFixed(1)}% used`;
-  document.getElementById("hw-mem-pct").textContent=`${memPct.toFixed(1)}% used`;
-  const cpuBar=document.getElementById("hw-cpu-bar");
-  cpuBar.style.width=Math.min(100,cpuPct)+"%";
-  cpuBar.className="headroom-bar-fill"+(cpuOver?" over":" cpu");
-  const memBar=document.getElementById("hw-mem-bar");
-  memBar.style.width=Math.min(100,memPct)+"%";
-  memBar.className="headroom-bar-fill"+(memOver?" over":" mem");
-
-  if(headroom){
-    document.getElementById("hw-spec").innerHTML=
-      `<span class="spec-tag">CPU: ${headroom.cpu_current_cores} cores → next: ${headroom.cpu_next_tier_cores}</span>
-       <span class="spec-tag">RAM: ${headroom.mem_current_gb}GB → next: ${headroom.mem_next_tier_gb}GB</span>`;
-    const cpuHr=headroom.cpu_headroom_pct, memHr=headroom.mem_headroom_pct;
-    document.getElementById("hw-headroom-text").textContent=
-      `CPU headroom: ${cpuHr>0?cpuHr+"%":"Over threshold!"}  ·  `+
-      `RAM headroom: ${memHr>0?memHr+"%":"Over threshold!"}`;
-  }
-
-  // Action cards
-  const actEl=document.getElementById("cap-actions");
-  actEl.innerHTML=actions.map(a=>`
-    <div class="cap-action ${a.urgency}">
-      <div class="cap-action-icon">${urgencyIcons[a.urgency]||"•"}</div>
-      <div class="cap-action-body">
-        <div class="cap-action-title">${a.action}</div>
-        <div class="cap-action-reason">${a.reason}</div>
-      </div>
-    </div>`).join("");
-}
-
-// ── Forecast horizon pills ────────────────────────────────────────────────────
-function updateForecastHorizon(cpuTrend,memTrend){
-  function buildRow(rowId,forecast,thr){
-    const el=document.getElementById(rowId);
-    if(!forecast||!forecast.length){
-      el.innerHTML=`<div style="color:var(--text3);font-size:12px;padding:8px">Need ≥2 data points for forecast</div>`;
-      return;
-    }
-    el.innerHTML=forecast.slice(0,30).map((v,i)=>`
-      <div class="fc-step${v>thr?" over-thresh":""}">
-        <div class="fc-step-label">T+${i+1}</div>
-        <div class="fc-step-val">${pct(v)}</div>
-      </div>`).join("");
-  }
-  buildRow("fc-row-cpu",cpuTrend?.forecast,CPU_THRESHOLD);
-  buildRow("fc-row-mem",memTrend?.forecast,MEM_THRESHOLD);
-}
-
-// ── Alert banners + modal ─────────────────────────────────────────────────────
-function checkAlerts(cpu,mem,cpuT,memT){
-  const ca=avg(cpu),cp=peak(cpu),ma=avg(mem),mp=peak(mem);
-  const rx=[];
-  if(ca>CPU_THRESHOLD)rx.push(`Avg CPU ${pct(ca)} > ${pct(CPU_THRESHOLD)}`);
-  if(cp>CPU_THRESHOLD)rx.push(`Peak CPU ${pct(cp)} > ${pct(CPU_THRESHOLD)}`);
-  if(ma>MEM_THRESHOLD)rx.push(`Avg Mem ${pct(ma)} > ${pct(MEM_THRESHOLD)}`);
-  if(mp>MEM_THRESHOLD)rx.push(`Peak Mem ${pct(mp)} > ${pct(MEM_THRESHOLD)}`);
-  const px=[];
-  if(cpuT?.forecast?.some(v=>v>CPU_THRESHOLD)&&!(ca>CPU_THRESHOLD||cp>CPU_THRESHOLD))
-    px.push(`CPU trending up — forecast ${pct(cpuT.forecast[0])} next reading`);
-  if(memT?.forecast?.some(v=>v>MEM_THRESHOLD)&&!(ma>MEM_THRESHOLD||mp>MEM_THRESHOLD))
-    px.push(`Memory trending up — forecast ${pct(memT.forecast[0])} next reading`);
-  const rb=document.getElementById("alert-banner"),pb=document.getElementById("predict-banner");
-  if(rx.length){document.getElementById("alert-text").textContent="🚨 "+rx.join(" | ");rb.classList.remove("hidden");}
-  else rb.classList.add("hidden");
-  if(px.length){document.getElementById("predict-text").textContent="⚠ Predictive — "+px.join(" | ");pb.classList.remove("hidden");}
-  else pb.classList.add("hidden");
-  if((rx.length||px.length)&&!modalShown){
-    modalShown=true;
-    document.getElementById("modal-reason").textContent="Triggered: "+[...rx,...px].join("; ");
-    document.getElementById("autoscale-modal").classList.remove("hidden");
-  }
-}
-function closeModal(){
-  document.getElementById("autoscale-modal").classList.add("hidden");
-  setTimeout(()=>{modalShown=false;},300_000);
-}
-
-// ── Main data fetch ───────────────────────────────────────────────────────────
-async function loadData(){
-  const dot=document.getElementById("status-dot");
-  const dbBar=document.getElementById("debug-bar");
-  try{
-    const res=await fetch(BACKEND_URL+"/metrics");
-    if(!res.ok) throw new Error("HTTP "+res.status);
-    const data=await res.json();
-    let{cpu=[],memory=[],timestamps=[],cpu_trend=null,mem_trend=null,
-        cpu_breach=null,mem_breach=null,capacity=null,stats={},_debug={}}=data;
-
-    lastCpuTrend=cpu_trend; lastMemTrend=mem_trend;
-    const cpuRows=_debug.cpu_rows_fetched??cpu.length;
-    const memRows=_debug.mem_rows_fetched??memory.length;
-    const cpuTypes=(_debug.cpu_metric_types||[]).join(", ")||"?";
-    const memTypes=(_debug.mem_metric_types||[]).join(", ")||"?";
-    const warn=cpuRows<2||memRows<2;
-
-    dbBar.className="debug-bar"+(warn?" warn":"");
-    dbBar.textContent=
-      `CPU: ${cpuRows} rows [${cpuTypes}]  |  Memory: ${memRows} rows [${memTypes}]`+
-      (warn?"  ⚠ < 2 rows — regression unavailable":"  ✓ Regression active");
-
-    cpu       =[...cpu].reverse().slice(0,MAX_POINTS);
-    memory    =[...memory].reverse().slice(0,MAX_POINTS);
-    timestamps=[...timestamps].reverse().slice(0,MAX_POINTS);
-    const labels=timestamps.length?timestamps.map(tsLbl):cpu.map((_,i)=>`T${i+1}`);
-    const cpuTL=cpu_trend?.trend_line?cpu_trend.trend_line.slice(-MAX_POINTS):cpu.map(()=>null);
-    const memTL=mem_trend?.trend_line?mem_trend.trend_line.slice(-MAX_POINTS):memory.map(()=>null);
-
-    if(!lineChart){buildLineChart(labels,cpu,memory,cpuTL,memTL);buildScatterChart(cpu,memory);}
-    else{updateLineChart(labels,cpu,memory,cpuTL,memTL);updateScatterChart(cpu,memory);}
-
-    updateStats(cpu,memory);
-    updateTrendCards(cpu_trend,mem_trend,cpuRows,memRows);
-    updateBreachCards(cpu_breach,mem_breach,cpuRows,memRows);
-    updateForecastHorizon(cpu_trend,mem_trend);
-    updateCapacity(capacity,stats.cpu_avg||avg(cpu),stats.mem_avg||avg(memory));
-    checkAlerts(cpu,memory,cpu_trend,mem_trend);
-
-    document.getElementById("last-updated").textContent="Updated "+new Date().toLocaleTimeString();
-    dot.classList.remove("err");
-  }catch(e){
-    console.error(e);
-    document.getElementById("last-updated").textContent="⚠ Fetch failed";
-    document.getElementById("debug-bar").className="debug-bar warn";
-    document.getElementById("debug-bar").textContent="⚠ Cannot reach "+BACKEND_URL+" — "+e.message;
-    dot.classList.add("err");
-  }
-}
-
-// ── Report ────────────────────────────────────────────────────────────────────
-async function loadReport(){
-  const loading=document.getElementById("report-loading");
-  const content=document.getElementById("report-content");
-  loading.classList.remove("hidden"); content.classList.add("hidden");
-  loading.textContent="Loading capacity planning report...";
-  try{
-    const res=await fetch(BACKEND_URL+"/report");
-    if(!res.ok) throw new Error("HTTP "+res.status+" — deploy new main.py and restart uvicorn");
-    const d=await res.json();
-
-    document.getElementById("rpt-ts").textContent="Generated: "+d.generated_at;
-    document.getElementById("rpt-samples").textContent=
-      `CPU: ${d.cpu.n_points} readings · Memory: ${d.memory.n_points} readings · `+
-      `Thresholds: CPU ${d.thresholds.cpu}, Memory ${d.thresholds.memory}`;
-
-    // CPU section
-    const setRv=(id,val,cls)=>{const e=document.getElementById(id);e.textContent=val;if(cls)e.className="rv "+cls;};
-    setRv("r-cpu-avg",  d.cpu.avg,  parseFloat(d.cpu.avg)>80?"bad":parseFloat(d.cpu.avg)>60?"warn":"good");
-    setRv("r-cpu-peak", d.cpu.peak);
-    setRv("r-cpu-min",  d.cpu.min);
-    setRv("r-cpu-dir",  d.cpu.direction, d.cpu.direction==="rising"?"warn":d.cpu.direction==="stable"?"good":"");
-    setRv("r-cpu-slope",d.cpu.slope);
-    setRv("r-cpu-type", (d.cpu.metric_types||[]).join(", ")||"unknown");
-    setRv("r-cpu-n",    d.cpu.n_points+" readings");
-    const cb=d.cpu.breach;
-    document.getElementById("r-cpu-breach").textContent=cb?(cb.will_breach?"Yes":"No"):"N/A";
-    document.getElementById("r-cpu-breach-st").textContent=cb?(cb.will_breach?"⚠ Action needed":"✓ Safe"):"—";
-    document.getElementById("r-cpu-breach-t").textContent=cb?.minutes_until_breach!=null?cb.minutes_until_breach+" min":"N/A";
-    document.getElementById("r-cpu-breach-v").textContent=cb?.value_at_breach!=null?pct(cb.value_at_breach):"N/A";
-    document.getElementById("r-cpu-proj").textContent=cb?.current_projected!=null?pct(cb.current_projected):"N/A";
-
-    // CPU forecast row T+1..T+10
-    const cpuFcRow=document.getElementById("r-cpu-fc-row");
-    cpuFcRow.innerHTML=(d.cpu.forecast_next_10||d.cpu.forecast_next_3||[]).map((v,i)=>{
-      const num=parseFloat(v); const over=num>parseFloat(d.thresholds.cpu);
-      return `<div class="fc-pip${over?" over":""}">T+${i+1}: ${v}</div>`;
-    }).join("")||"<span style='color:var(--text3);font-size:12px'>Not enough data</span>";
-
-    // Memory section
-    setRv("r-mem-avg",  d.memory.avg, parseFloat(d.memory.avg)>80?"bad":parseFloat(d.memory.avg)>60?"warn":"good");
-    setRv("r-mem-peak", d.memory.peak);
-    setRv("r-mem-min",  d.memory.min);
-    setRv("r-mem-dir",  d.memory.direction, d.memory.direction==="rising"?"warn":d.memory.direction==="stable"?"good":"");
-    setRv("r-mem-slope",d.memory.slope);
-    setRv("r-mem-type", (d.memory.metric_types||[]).join(", ")||"unknown");
-    setRv("r-mem-n",    d.memory.n_points+" readings");
-    const mb=d.memory.breach;
-    document.getElementById("r-mem-breach").textContent=mb?(mb.will_breach?"Yes":"No"):"N/A";
-    document.getElementById("r-mem-breach-st").textContent=mb?(mb.will_breach?"⚠ Action needed":"✓ Safe"):"—";
-    document.getElementById("r-mem-breach-t").textContent=mb?.minutes_until_breach!=null?mb.minutes_until_breach+" min":"N/A";
-    document.getElementById("r-mem-breach-v").textContent=mb?.value_at_breach!=null?pct(mb.value_at_breach):"N/A";
-    document.getElementById("r-mem-proj").textContent=mb?.current_projected!=null?pct(mb.current_projected):"N/A";
-
-    const memFcRow=document.getElementById("r-mem-fc-row");
-    memFcRow.innerHTML=(d.memory.forecast_next_10||d.memory.forecast_next_3||[]).map((v,i)=>{
-      const num=parseFloat(v); const over=num>parseFloat(d.thresholds.memory);
-      return `<div class="fc-pip${over?" over":""}">T+${i+1}: ${v}</div>`;
-    }).join("")||"<span style='color:var(--text3);font-size:12px'>Not enough data</span>";
-
-    // Capacity actions
-    const capActEl=document.getElementById("r-cap-actions");
-    if(d.capacity?.actions){
-      capActEl.innerHTML=d.capacity.actions.map(a=>`
-        <div class="cap-action ${a.urgency}">
-          <div class="cap-action-icon">${urgencyIcons[a.urgency]||"•"}</div>
-          <div class="cap-action-body">
-            <div class="cap-action-title">${a.action}</div>
-            <div class="cap-action-reason">${a.reason}</div>
-          </div>
-        </div>`).join("");
-    }
-
-    // Headroom in report
-    const hw=d.capacity?.headroom;
-    if(hw){
-      document.getElementById("r-headroom").innerHTML=`
-        <div class="rm">
-          <div class="rl">CPU Headroom</div>
-          <div class="rv ${hw.cpu_headroom_pct>20?"good":hw.cpu_headroom_pct>0?"warn":"bad"}">
-            ${hw.cpu_headroom_pct>0?hw.cpu_headroom_pct+"%":"Over limit!"}
-          </div>
-          <div style="font-size:11px;color:var(--text3);margin-top:4px">${hw.cpu_headroom_cores} cores free · ${hw.cpu_current_cores}→${hw.cpu_next_tier_cores} vCPU</div>
+            <div class="section-header" style="margin-top: 32px;">📋 Acknowledgement History</div>
+            <div id="ack-history" style="color: var(--text-secondary); text-align: center; padding: 40px 20px;">
+                <p>No acknowledgement history yet</p>
+            </div>
         </div>
-        <div class="rm">
-          <div class="rl">Memory Headroom</div>
-          <div class="rv ${hw.mem_headroom_pct>20?"good":hw.mem_headroom_pct>0?"warn":"bad"}">
-            ${hw.mem_headroom_pct>0?hw.mem_headroom_pct+"%":"Over limit!"}
-          </div>
-          <div style="font-size:11px;color:var(--text3);margin-top:4px">${hw.mem_headroom_gb}GB free · ${hw.mem_current_gb}GB→${hw.mem_next_tier_gb}GB</div>
-        </div>`;
-    }
+    </div>
 
-    // Recommendation
-    const urg=d.capacity?.urgency||"ok";
-    const box=document.getElementById("r-rec-box");
-    box.className="rec-box "+urg;
-    document.getElementById("r-rec-text").textContent=d.recommendation;
+    <!-- ============ TAB: VM MANAGEMENT ============ -->
+    <div id="vm-management" class="tab-panel">
+        <div class="container">
+            <div class="section-header">🖥️ Virtual Machine Management</div>
 
-    loading.classList.add("hidden"); content.classList.remove("hidden");
-  }catch(e){
-    loading.textContent="⚠ Failed to load report — "+e.message;
-  }
-}
+            <div id="vm-list-container">
+                <div style="text-align: center; color: var(--text-secondary); padding: 40px 20px;">
+                    <p>Loading VMs...</p>
+                </div>
+            </div>
 
-function printReport(){window.print();}
-window.closeModal=closeModal;window.pct=pct;window.switchTab=switchTab;window.showFcTab=showFcTab;
+            <div class="section-header" style="margin-top: 32px;">📊 VM Performance Summary</div>
+            <div style="overflow-x: auto;">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>VM ID</th>
+                            <th>IP Address</th>
+                            <th>Status</th>
+                            <th>CPU</th>
+                            <th>Memory</th>
+                            <th>Region</th>
+                            <th>Created</th>
+                        </tr>
+                    </thead>
+                    <tbody id="vm-table-body">
+                        <tr>
+                            <td colspan="7" style="text-align: center; color: var(--text-muted);">Loading VM data...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 
-loadData();
-setInterval(loadData,REFRESH_MS);
-</script>
+    <!-- Modal for Autoscale Acknowledgement -->
+    <div class="modal" id="autoscale-modal">
+        <div class="modal-content">
+            <div class="modal-icon">⚡</div>
+            <div class="modal-title" id="modal-title">Autoscale Required</div>
+            <div class="modal-message" id="modal-message">
+                Resources have been depleted. The system is requesting approval to switch to a new VM instance.
+            </div>
+            <div class="modal-metrics" id="modal-metrics">
+                <div class="modal-metric-row">
+                    <span class="modal-metric-label">Current CPU Usage:</span>
+                    <span class="modal-metric-value" id="modal-cpu">--</span>
+                </div>
+                <div class="modal-metric-row">
+                    <span class="modal-metric-label">Current Memory Usage:</span>
+                    <span class="modal-metric-value" id="modal-mem">--</span>
+                </div>
+                <div class="modal-metric-row">
+                    <span class="modal-metric-label">New VM:</span>
+                    <span class="modal-metric-value" id="modal-new-vm">--</span>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-success" onclick="acknowledgeAutoscale('proceed')">✓ Proceed</button>
+                <button class="btn btn-danger" onclick="acknowledgeAutoscale('dismiss')">✕ Dismiss</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
 </body>
 </html>
